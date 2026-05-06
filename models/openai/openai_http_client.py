@@ -133,6 +133,42 @@ class OpenAIHTTPClient:
             stream=False,
         )
 
+    def responses(
+        self,
+        *,
+        api_key: Optional[str] = None,
+        api_base: Optional[str] = None,
+        timeout: Optional[float] = None,
+        proxy: Optional[str] = None,
+        extra_headers: Optional[Dict[str, str]] = None,
+        extra_query: Optional[Dict[str, str]] = None,
+        path: str = "/responses",
+        stream: bool = False,
+        **payload,
+    ):
+        """POST /responses (OpenAI Responses API).
+
+        Used for GPT-5 family and routers (e.g. anyrouter) that only expose
+        the Responses endpoint. Caller is responsible for shaping ``payload``
+        per Responses API spec (``input``, ``instructions``, ``tools`` etc.).
+
+        Stream contract is identical to :meth:`chat_completions`: a generator
+        yielding parsed SSE chunks; on error a single ``{"error": True, ...}``
+        chunk and termination.
+        """
+        payload["stream"] = stream
+        return self._request(
+            path=path,
+            payload=payload,
+            api_key=api_key,
+            api_base=api_base,
+            timeout=timeout,
+            proxy=proxy,
+            extra_headers=extra_headers,
+            extra_query=extra_query,
+            stream=stream,
+        )
+
     def images_generate(
         self,
         *,

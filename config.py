@@ -15,7 +15,23 @@ available_setting = {
     "open_ai_api_key": "",  # openai api key
     # openai apibase，当use_azure_chatgpt为true时，需要设置对应的api base
     "open_ai_api_base": "https://api.openai.com/v1",
+    # OpenAI 兼容路由的请求协议。
+    #   ""  / "chat_completions" -> 走 /v1/chat/completions（默认，绝大多数 provider）
+    #   "responses"              -> 走 /v1/responses（GPT-5 系列、anyrouter 等 router-only 场景）
+    # 适配器会在 bot 层把 Responses API 翻译成 chat-completions shape，agent stream 不感知。
+    "open_ai_wire_api": "",
+    # 模型推理强度，仅在 wire_api="responses" 时透传到 reasoning.effort 字段（如 gpt-5 系列）。
+    # 可选: low / medium / high。
+    "open_ai_reasoning_effort": "",
+    # 透传到 OpenAI 兼容请求的额外 HTTP header（同时作用于同步 reply_text 与 agent 流式路径）。
+    # 典型场景：第三方 router（如 anyrouter）要求 opt-in 才能用 claude-opus-4-7 的 1M context，
+    # 配置 {"anthropic-beta": "context-1m-2025-08-07"} 即可。
+    "open_ai_extra_headers": {},
     "claude_api_base": "https://api.anthropic.com/v1",  # claude api base
+    # 透传到原生 Claude API 请求的额外 HTTP header（同时作用于 sync reply、vision、agent 流式路径）。
+    # 典型场景：anyrouter 等第三方 router 要求 opt-in 才能用 1M context，
+    # 配置 {"anthropic-beta": "context-1m-2025-08-07"} 即可。
+    "claude_extra_headers": {},
     "gemini_api_base": "https://generativelanguage.googleapis.com",  # gemini api base
     "custom_api_key": "",  # custom OpenAI-compatible provider api key (used when bot_type is "custom")
     "custom_api_base": "",  # custom OpenAI-compatible provider api base (used when bot_type is "custom")

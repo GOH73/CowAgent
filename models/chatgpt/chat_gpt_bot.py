@@ -38,10 +38,15 @@ class ChatGPTBot(Bot, OpenAIImage, OpenAICompatibleBot):
             self._api_key = conf().get("open_ai_api_key")
             self._api_base = conf().get("open_ai_api_base") or None
         self._proxy = conf().get("proxy") or None
+        # Custom HTTP headers to propagate on every request (e.g. anthropic-beta
+        # opt-in headers when routing Claude through an OpenAI-compatible
+        # third-party router like anyrouter).
+        self._extra_headers = conf().get("open_ai_extra_headers") or None
         self._http_client = OpenAIHTTPClient(
             api_key=self._api_key,
             api_base=self._api_base,
             proxy=self._proxy,
+            extra_headers=self._extra_headers,
         )
         if conf().get("rate_limit_chatgpt"):
             self.tb4chatgpt = TokenBucket(conf().get("rate_limit_chatgpt", 20))
@@ -252,12 +257,36 @@ class ChatGPTBot(Bot, OpenAIImage, OpenAICompatibleBot):
             # - request_timeout / timeout -> per-call timeout
             call_args = dict(args)
             timeout = call_args.pop("request_timeout", None) or call_args.pop("timeout", None)
-            response = self._http_client.chat_completions(
-                api_key=api_key or None,
-                timeout=timeout,
-                messages=session.messages,
-                **call_args,
-            )
+            wire_api = (conf().get("open_ai_wire_api") or "").strip().lower()
+            if wire_api == "responses":
+                # Translate the chat-completion-shape call into a Responses
+                # request, then translate the response back so callers
+                # ([CHATGPT] reply, title generation, etc.) see no difference.
+                from models.openai.responses_adapter import (
+                    build_responses_request,
+                    translate_sync as translate_responses_sync,
+                )
+                effort = (conf().get("open_ai_reasoning_effort") or "").strip().lower() or None
+                chat_payload = dict(call_args)
+                chat_payload["messages"] = session.messages
+                responses_payload = build_responses_request(
+                    chat_payload, reasoning_effort=effort
+                )
+                responses_payload.pop("stream", None)
+                raw = self._http_client.responses(
+                    api_key=api_key or None,
+                    timeout=timeout,
+                    stream=False,
+                    **responses_payload,
+                )
+                response = translate_responses_sync(raw)
+            else:
+                response = self._http_client.chat_completions(
+                    api_key=api_key or None,
+                    timeout=timeout,
+                    messages=session.messages,
+                    **call_args,
+                )
             logger.info("[ChatGPT] reply={}, total_tokens={}".format(
                 response["choices"][0]["message"]["content"],
                 response["usage"]["total_tokens"]

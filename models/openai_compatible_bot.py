@@ -13,6 +13,11 @@ from typing import Optional
 from common.log import logger
 from agent.protocol.message_utils import drop_orphaned_tool_results_openai
 from models.openai.openai_http_client import OpenAIHTTPClient, OpenAIHTTPError
+from models.openai.responses_adapter import (
+    build_responses_request,
+    translate_stream as translate_responses_stream,
+    translate_sync as translate_responses_sync,
+)
 
 
 class OpenAICompatibleBot:
@@ -143,7 +148,25 @@ class OpenAICompatibleBot:
         """
         from config import conf
         proxy = conf().get("proxy") or None
-        return OpenAIHTTPClient(proxy=proxy)
+        # Forward any user-configured extra headers (e.g. anthropic-beta for
+        # 1M-context opt-in on third-party routers). Used by the agent stream
+        # path, mirroring the headers that ChatGPTBot.__init__ injects into
+        # its own self._http_client for non-stream calls.
+        extra_headers = conf().get("open_ai_extra_headers") or None
+        return OpenAIHTTPClient(proxy=proxy, extra_headers=extra_headers)
+
+    @staticmethod
+    def _wire_api() -> str:
+        """Read the configured wire protocol. ``"responses"`` -> /v1/responses,
+        anything else (including default empty) -> /v1/chat/completions."""
+        from config import conf
+        return (conf().get("open_ai_wire_api") or "").strip().lower()
+
+    @staticmethod
+    def _reasoning_effort() -> Optional[str]:
+        from config import conf
+        val = (conf().get("open_ai_reasoning_effort") or "").strip().lower()
+        return val or None
 
     def _handle_sync_response(self, request_params, api_key, api_base):
         """Handle synchronous chat-completion via HTTP."""
@@ -153,6 +176,19 @@ class OpenAICompatibleBot:
         timeout = params.pop("request_timeout", None) or params.pop("timeout", None)
         try:
             client = self._get_http_client()
+            if self._wire_api() == "responses":
+                responses_payload = build_responses_request(
+                    params, reasoning_effort=self._reasoning_effort()
+                )
+                responses_payload.pop("stream", None)
+                raw = client.responses(
+                    api_key=api_key,
+                    api_base=api_base,
+                    timeout=timeout,
+                    stream=False,
+                    **responses_payload,
+                )
+                return translate_responses_sync(raw)
             return client.chat_completions(
                 api_key=api_key,
                 api_base=api_base,
@@ -191,6 +227,20 @@ class OpenAICompatibleBot:
         timeout = params.pop("request_timeout", None) or params.pop("timeout", None)
         try:
             client = self._get_http_client()
+            if self._wire_api() == "responses":
+                responses_payload = build_responses_request(
+                    params, reasoning_effort=self._reasoning_effort()
+                )
+                raw_stream = client.responses(
+                    api_key=api_key,
+                    api_base=api_base,
+                    timeout=timeout,
+                    stream=True,
+                    **responses_payload,
+                )
+                for chunk in translate_responses_stream(raw_stream):
+                    yield chunk
+                return
             stream = client.chat_completions(
                 api_key=api_key,
                 api_base=api_base,

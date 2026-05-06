@@ -47,6 +47,22 @@ class ClaudeAPIBot(Bot, OpenAIImage):
     def proxy(self):
         return conf().get("proxy", None)
 
+    def _build_headers(self):
+        """Build standard Claude API headers, merging in any user-configured
+        extra headers (e.g. anthropic-beta opt-in for 1M context).
+        Used by sync reply, vision, and stream paths so all routes share the
+        same header policy.
+        """
+        headers = {
+            "x-api-key": self.api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        extra = conf().get("claude_extra_headers") or None
+        if extra and isinstance(extra, dict):
+            headers.update(extra)
+        return headers
+
     def reply(self, query, context=None):
         # acquire reply content
         if context and context.type:
@@ -93,11 +109,7 @@ class ClaudeAPIBot(Bot, OpenAIImage):
             actual_model = self._model_mapping(conf().get("model"))
 
             # Prepare headers
-            headers = {
-                "x-api-key": self.api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json"
-            }
+            headers = self._build_headers()
 
             # Extract system prompt if present and prepare Claude-compatible messages
             system_prompt = conf().get("character_desc", "")
@@ -271,11 +283,7 @@ class ClaudeAPIBot(Bot, OpenAIImage):
                 }],
             }
 
-            headers = {
-                "x-api-key": self.api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            }
+            headers = self._build_headers()
             proxies = {"http": self.proxy, "https": self.proxy} if self.proxy else None
             resp = requests.post(f"{self.api_base}/messages",
                                  headers=headers, json=data, proxies=proxies)
@@ -390,11 +398,7 @@ class ClaudeAPIBot(Bot, OpenAIImage):
     def _handle_sync_response(self, request_params):
         """Handle synchronous Claude API response"""
         # Prepare headers
-        headers = {
-            "x-api-key": self.api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json"
-        }
+        headers = self._build_headers()
 
         # Make HTTP request
         proxies = {"http": self.proxy, "https": self.proxy} if self.proxy else None
@@ -462,11 +466,7 @@ class ClaudeAPIBot(Bot, OpenAIImage):
     def _handle_stream_response(self, request_params):
         """Handle streaming Claude API response using HTTP requests"""
         # Prepare headers
-        headers = {
-            "x-api-key": self.api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json"
-        }
+        headers = self._build_headers()
 
         # Add stream parameter
         request_params["stream"] = True
