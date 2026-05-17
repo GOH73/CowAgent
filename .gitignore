@@ -46,3 +46,10 @@ dist/
 build/
 *.egg-info/
 .cow.pid
+
+# private skills
+exes/
+
+# AI
+.codex
+CLAUDE.md
