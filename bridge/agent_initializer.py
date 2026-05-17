@@ -382,7 +382,18 @@ class AgentInitializer:
                     tools.append(tool)
             except Exception as e:
                 logger.warning(f"[AgentInitializer] Failed to load tool {tool_name}: {e}")
-        
+
+        # Add MCP tools (snapshot to avoid races with the background loader)
+        mcp_tools_snapshot = list(tool_manager._mcp_tool_instances.items())
+        if mcp_tools_snapshot:
+            for _, mcp_tool in mcp_tools_snapshot:
+                tools.append(mcp_tool)
+            if session_id is None:
+                names = [name for name, _ in mcp_tools_snapshot]
+                logger.info(
+                    f"[AgentInitializer] Added {len(names)} MCP tool(s): {names}"
+                )
+
         # Add memory tools
         if memory_tools:
             tools.extend(memory_tools)

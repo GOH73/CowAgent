@@ -221,6 +221,7 @@ available_setting = {
     "Minimax_base_url": "",
     "deepseek_api_key": "",
     "deepseek_api_base": "https://api.deepseek.com/v1",
+    "web_host": "",  # Web console bind address; empty means auto
     "web_port": 9899,
     "web_password": "",  # Web console password; empty means no authentication required
     "web_session_expire_days": 30,  # Auth session expiry in days
@@ -230,11 +231,10 @@ available_setting = {
     "agent_max_context_turns": 20,  # Agent模式下最大上下文记忆轮次
     "agent_max_steps": 20,  # Agent模式下单次运行最大决策步数
     "enable_thinking": False,  # Enable deep-thinking mode for thinking-capable models
+    "reasoning_effort": "high",  # Reasoning depth under thinking mode: "high" or "max"
     "knowledge": True,  # 是否开启知识库功能
-    # Per-skill runtime config. Nested keys are flattened to env vars at startup
-    # using the rule: skill[<name>][<key>] -> SKILL_<NAME>_<KEY>
-    # (e.g. skill["image-generation"].model -> SKILL_IMAGE_GENERATION_MODEL).
-    "skill": {},
+    "skill": {},  # Per-skill runtime config; nested keys flatten to SKILL_<NAME>_<KEY> env vars at startup
+    "mcp_servers": [],  # MCP server list; each entry supports type "stdio" (local process) or "sse" (remote URL)
 }
 
 
@@ -249,15 +249,9 @@ class Config(dict):
         self.user_datas = {}
 
     def __getitem__(self, key):
-        # 跳过以下划线开头的注释字段
-        if not key.startswith("_") and key not in available_setting:
-            logger.debug("[Config] key '{}' not in available_setting, may not take effect".format(key))
         return super().__getitem__(key)
 
     def __setitem__(self, key, value):
-        # 跳过以下划线开头的注释字段
-        if not key.startswith("_") and key not in available_setting:
-            logger.debug("[Config] key '{}' not in available_setting, may not take effect".format(key))
         return super().__setitem__(key, value)
 
     def get(self, key, default=None):
@@ -265,7 +259,7 @@ class Config(dict):
         if key.startswith("_"):
             return super().get(key, default)
         
-        # 如果key不在available_setting中，直接返回default
+        # 如果key不在available_setting中，直接走dict的get，返回config.json中实际加载的值（如不存在则返回default）
         if key not in available_setting:
             return super().get(key, default)
         

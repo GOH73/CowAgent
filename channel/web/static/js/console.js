@@ -50,7 +50,7 @@ const I18N = {
         config_password_hint: '留空则不启用密码保护',
         config_password_changed: '密码已更新，请重新登录',
         config_password_cleared: '密码已清除',
-        skills_title: '技能管理', skills_desc: '查看、启用或禁用 Agent 技能', skills_hub_btn: '探索技能广场',
+        skills_title: '技能管理', skills_desc: '查看、启用或禁用 Agent 工具和技能', skills_hub_btn: '探索技能广场',
         skills_loading: '加载技能中...', skills_loading_desc: '技能加载后将显示在此处',
         tools_section_title: '内置工具', tools_loading: '加载工具中...',
         skills_section_title: '技能', skill_enable: '启用', skill_disable: '禁用',
@@ -104,7 +104,9 @@ const I18N = {
         context_cleared: '— 以上内容已从上下文中移除 —',
         tip_new_chat: '新建对话',
         tip_clear_context: '清除上下文',
-        tip_attach_file: '上传附件',
+        tip_attach: '添加附件',
+        attach_menu_file: '上传文件',
+        attach_menu_folder: '上传文件夹',
         confirm_yes: '确认',
         confirm_cancel: '取消',
         error_send: '发送失败，请稍后再试。', error_timeout: '请求超时，请再试一次。',
@@ -149,7 +151,7 @@ const I18N = {
         config_password_hint: 'Leave empty to disable password protection',
         config_password_changed: 'Password updated, please re-login',
         config_password_cleared: 'Password cleared',
-        skills_title: 'Skills', skills_desc: 'View, enable, or disable agent skills', skills_hub_btn: 'Skill Hub',
+        skills_title: 'Skills', skills_desc: 'View, enable, or disable agent tools and skills', skills_hub_btn: 'Skill Hub',
         skills_loading: 'Loading skills...', skills_loading_desc: 'Skills will be displayed here after loading',
         tools_section_title: 'Built-in Tools', tools_loading: 'Loading tools...',
         skills_section_title: 'Skills', skill_enable: 'Enable', skill_disable: 'Disable',
@@ -203,7 +205,9 @@ const I18N = {
         context_cleared: '— Context above has been cleared —',
         tip_new_chat: 'New Chat',
         tip_clear_context: 'Clear Context',
-        tip_attach_file: 'Attach File',
+        tip_attach: 'Add Attachment',
+        attach_menu_file: 'Upload File',
+        attach_menu_folder: 'Upload Folder',
         confirm_yes: 'Confirm',
         confirm_cancel: 'Cancel',
         error_send: 'Failed to send. Please try again.', error_timeout: 'Request timeout. Please try again.',
@@ -390,14 +394,34 @@ window.addEventListener('resize', () => {
 // =====================================================================
 // Markdown Renderer
 // =====================================================================
+const FALLBACK_HLJS = {
+    getLanguage() { return false; },
+    highlight(str) { return { value: escapeHtml(str) }; },
+    highlightAuto(str) { return { value: escapeHtml(str) }; },
+    highlightElement() {},
+};
+
+function getHljs() {
+    return window.hljs || FALLBACK_HLJS;
+}
+
 function createMd() {
-    const md = window.markdownit({
+    const hljsLib = getHljs();
+    const mdFactory = window.markdownit;
+    if (typeof mdFactory !== 'function') {
+        return {
+            render(text) {
+                return `<p>${escapeHtml(text || '')}</p>`;
+            }
+        };
+    }
+    const md = mdFactory({
         html: false, breaks: true, linkify: true, typographer: true,
         highlight: function(str, lang) {
-            if (lang && hljs.getLanguage(lang)) {
-                try { return hljs.highlight(str, { language: lang }).value; } catch (_) {}
+            if (lang && hljsLib.getLanguage(lang)) {
+                try { return hljsLib.highlight(str, { language: lang }).value; } catch (_) {}
             }
-            return hljs.highlightAuto(str).value;
+            return hljsLib.highlightAuto(str).value;
         }
     });
     const defaultLinkOpen = md.renderer.rules.link_open || function(tokens, idx, options, env, self) {
@@ -578,6 +602,15 @@ const chatInput = document.getElementById('chat-input');
 const sendBtn = document.getElementById('send-btn');
 const messagesDiv = document.getElementById('chat-messages');
 const fileInput = document.getElementById('file-input');
+const folderInput = document.getElementById('folder-input');
+const attachBtn = document.getElementById('attach-btn');
+const attachMenu = document.getElementById('attach-menu');
+const attachFolderOption = document.getElementById('attach-folder-option');
+const supportsDirectoryUpload = !!folderInput && 'webkitdirectory' in folderInput;
+
+if (!supportsDirectoryUpload && attachFolderOption) {
+    attachFolderOption.classList.add('hidden');
+}
 
 // Smart auto-scroll: pause when user scrolls up, resume when near bottom
 let _autoScrollEnabled = true;
@@ -644,9 +677,12 @@ function renderAttachmentPreview() {
     attachmentPreview.classList.remove('hidden');
     attachmentPreview.innerHTML = pendingAttachments.map((att, idx) => {
         if (att._uploading) {
+            const suffix = att.file_type === 'directory' && att.file_count
+                ? ` (${att.file_count})`
+                : '';
             return `<div class="att-chip att-uploading" data-idx="${idx}">
                 <i class="fas fa-spinner fa-spin"></i>
-                <span class="att-name">${escapeHtml(att.file_name)}</span>
+                <span class="att-name">${escapeHtml(att.file_name)}${suffix}</span>
             </div>`;
         }
         if (att.file_type === 'image') {
@@ -655,10 +691,15 @@ function renderAttachmentPreview() {
                 <button class="att-remove" onclick="removeAttachment(${idx})">&times;</button>
             </div>`;
         }
-        const icon = att.file_type === 'video' ? 'fa-film' : 'fa-file-alt';
+        const icon = att.file_type === 'video'
+            ? 'fa-film'
+            : (att.file_type === 'directory' ? 'fa-folder-tree' : 'fa-file-alt');
+        const suffix = att.file_type === 'directory' && att.file_count
+            ? ` (${att.file_count})`
+            : '';
         return `<div class="att-chip" data-idx="${idx}">
             <i class="fas ${icon}"></i>
-            <span class="att-name">${escapeHtml(att.file_name)}</span>
+            <span class="att-name">${escapeHtml(att.file_name)}${suffix}</span>
             <button class="att-remove" onclick="removeAttachment(${idx})">&times;</button>
         </div>`;
     }).join('');
@@ -669,6 +710,34 @@ function removeAttachment(idx) {
     if (pendingAttachments[idx]?._uploading) return;
     pendingAttachments.splice(idx, 1);
     renderAttachmentPreview();
+}
+
+function isAttachMenuVisible() {
+    return attachMenu && !attachMenu.classList.contains('hidden');
+}
+
+function hideAttachMenu() {
+    if (attachMenu) attachMenu.classList.add('hidden');
+}
+
+function toggleAttachMenu(event) {
+    if (!attachMenu) return;
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    attachMenu.classList.toggle('hidden');
+}
+
+function triggerFileUpload() {
+    hideAttachMenu();
+    fileInput?.click();
+}
+
+function triggerFolderUpload() {
+    if (!supportsDirectoryUpload) return;
+    hideAttachMenu();
+    folderInput?.click();
 }
 
 async function handleFileSelect(files) {
@@ -709,9 +778,88 @@ async function handleFileSelect(files) {
     await Promise.all(tasks);
 }
 
+function _makeUploadId() {
+    return `dir_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function _groupDirectoryFiles(files) {
+    const groups = new Map();
+    for (const file of Array.from(files || [])) {
+        const relPath = file.webkitRelativePath || file.name;
+        const parts = relPath.split('/').filter(Boolean);
+        const rootName = parts[0] || file.name;
+        if (!groups.has(rootName)) groups.set(rootName, []);
+        groups.get(rootName).push({ file, relPath });
+    }
+    return groups;
+}
+
+async function handleFolderSelect(files) {
+    if (!files || files.length === 0) return;
+    const groups = _groupDirectoryFiles(files);
+    const groupTasks = [];
+
+    for (const [rootName, entries] of groups.entries()) {
+        const placeholder = {
+            file_name: rootName,
+            file_type: 'directory',
+            file_count: entries.length,
+            _uploading: true,
+        };
+        pendingAttachments.push(placeholder);
+        uploadingCount++;
+        renderAttachmentPreview();
+
+        const uploadId = _makeUploadId();
+        groupTasks.push((async () => {
+            try {
+                const formData = new FormData();
+                formData.append('session_id', sessionId);
+                formData.append('upload_id', uploadId);
+                for (const { file, relPath } of entries) {
+                    formData.append('files', file);
+                    formData.append('relative_paths', relPath);
+                }
+
+                const resp = await fetch('/upload', { method: 'POST', body: formData });
+                const data = await resp.json();
+                if (data.status !== 'success') {
+                    throw new Error(data.message || 'Upload failed');
+                }
+                if (!data.root_path) {
+                    throw new Error('Directory root path missing');
+                }
+                placeholder.file_path = data.root_path;
+                placeholder.file_name = data.root_name || rootName;
+                delete placeholder._uploading;
+            } catch (e) {
+                console.error('Directory upload failed:', e);
+                const i = pendingAttachments.indexOf(placeholder);
+                if (i !== -1) pendingAttachments.splice(i, 1);
+            } finally {
+                uploadingCount--;
+            }
+            renderAttachmentPreview();
+        })());
+    }
+
+    await Promise.all(groupTasks);
+}
+
 fileInput.addEventListener('change', function() {
     handleFileSelect(this.files);
     this.value = '';
+});
+
+folderInput.addEventListener('change', function() {
+    handleFolderSelect(this.files);
+    this.value = '';
+});
+
+document.addEventListener('click', (e) => {
+    if (!isAttachMenuVisible()) return;
+    if (attachMenu.contains(e.target) || attachBtn.contains(e.target)) return;
+    hideAttachMenu();
 });
 
 // Drag-and-drop support on chat input area
@@ -894,6 +1042,11 @@ chatInput.addEventListener('input', function() {
 chatInput.addEventListener('keydown', function(e) {
     if (e.keyCode === 229 || e.isComposing || isComposing) return;
 
+    if (e.key === 'Escape' && isAttachMenuVisible()) {
+        hideAttachMenu();
+        return;
+    }
+
     if (isSlashMenuVisible()) {
         if (e.key === 'ArrowDown') {
             e.preventDefault();
@@ -1037,6 +1190,7 @@ function sendMessage() {
             file_path: a.file_path,
             file_name: a.file_name,
             file_type: a.file_type,
+            file_count: a.file_count,
         }));
     }
 
@@ -1448,8 +1602,13 @@ function createUserMessageEl(content, timestamp, attachments) {
             if (a.file_type === 'image') {
                 return `<img src="${a.preview_url}" alt="${escapeHtml(a.file_name)}" class="user-msg-image">`;
             }
-            const icon = a.file_type === 'video' ? 'fa-film' : 'fa-file-alt';
-            return `<div class="user-msg-file"><i class="fas ${icon}"></i> ${escapeHtml(a.file_name)}</div>`;
+            const icon = a.file_type === 'video'
+                ? 'fa-film'
+                : (a.file_type === 'directory' ? 'fa-folder-tree' : 'fa-file-alt');
+            const suffix = a.file_type === 'directory' && a.file_count
+                ? ` (${a.file_count})`
+                : '';
+            return `<div class="user-msg-file"><i class="fas ${icon}"></i> ${escapeHtml(a.file_name)}${suffix}</div>`;
         }).join('');
         attachHtml = `<div class="user-msg-attachments">${items}</div>`;
     }
@@ -1979,7 +2138,7 @@ function _applyInputTooltips() {
     };
     set('new-chat-btn', 'tip_new_chat');
     set('clear-context-btn', 'tip_clear_context');
-    set('attach-btn', 'tip_attach_file');
+    set('attach-btn', 'tip_attach');
     set('session-toggle-btn', 'session_history', 'bottom');
 }
 
@@ -2295,9 +2454,10 @@ function _updateScrollToBottomBtn() {
 function applyHighlighting(container) {
     const root = container || document;
     setTimeout(() => {
+        const hljsLib = getHljs();
         root.querySelectorAll('pre code').forEach(block => {
             if (!block.classList.contains('hljs')) {
-                hljs.highlightElement(block);
+                hljsLib.highlightElement(block);
             }
         });
     }, 0);
@@ -3554,6 +3714,12 @@ function connectWeixinAfterQr() {
 // =====================================================================
 // WeCom Bot QR Auth
 // =====================================================================
+// NOTE: This is the only remaining external script in the Web Console.
+// Tencent's WeCom Bot SDK must be loaded from their official CDN — it
+// performs runtime origin/signature checks and will not work if
+// self-hosted. The SDK is fetched lazily, only when the user opens the
+// "WeCom Bot" channel QR-login flow, so the rest of the console works
+// fully offline.
 const WECOM_BOT_SDK_URL = 'https://wwcdn.weixin.qq.com/node/wework/js/wecom-aibot-sdk@0.1.0.min.js';
 const WECOM_BOT_SOURCE = 'cowagent';
 let _wecomSdkLoaded = false;
@@ -4022,6 +4188,51 @@ function loadTasksView() {
 // =====================================================================
 let logEventSource = null;
 
+function logLevelClass(line) {
+    if (/\[CRITICAL\]/.test(line)) return 'log-line-critical';
+    if (/\[ERROR\]/.test(line))    return 'log-line-error';
+    if (/\[WARNING\]/.test(line))  return 'log-line-warning';
+    if (/\[INFO\]/.test(line))     return 'log-line-info';
+    if (/\[DEBUG\]/.test(line))    return 'log-line-debug';
+    return '';
+}
+
+function getHiddenLevels() {
+    const hidden = new Set();
+    document.querySelectorAll('.log-filter-cb').forEach(function(cb) {
+        if (!cb.checked) hidden.add('log-line-' + cb.dataset.level);
+    });
+    return hidden;
+}
+
+function applyLogFilter() {
+    const hidden = getHiddenLevels();
+    document.querySelectorAll('#log-output .log-line').forEach(function(span) {
+        const level = span.classList[1] || '';
+        span.style.display = hidden.has(level) ? 'none' : '';
+    });
+}
+
+function appendLogLines(output, text) {
+    const hidden = getHiddenLevels();
+    let lastLevelClass = '';
+    const lines = text.split('\n');
+    lines.forEach(function(line, i) {
+        if (i === lines.length - 1 && line === '') return;
+        const span = document.createElement('span');
+        const levelClass = logLevelClass(line) || lastLevelClass;
+        if (logLevelClass(line)) lastLevelClass = levelClass;
+        span.className = 'log-line ' + levelClass;
+        span.textContent = line + '\n';
+        if (hidden.has(levelClass)) span.style.display = 'none';
+        output.appendChild(span);
+    });
+}
+
+document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('log-filter-cb')) applyLogFilter();
+});
+
 function startLogStream() {
     if (logEventSource) return;
     const output = document.getElementById('log-output');
@@ -4033,10 +4244,11 @@ function startLogStream() {
         try { item = JSON.parse(e.data); } catch (_) { return; }
 
         if (item.type === 'init') {
-            output.textContent = item.content || '';
+            output.innerHTML = '';
+            appendLogLines(output, item.content || '');
             output.scrollTop = output.scrollHeight;
         } else if (item.type === 'line') {
-            output.textContent += item.content;
+            appendLogLines(output, item.content);
             output.scrollTop = output.scrollHeight;
         } else if (item.type === 'error') {
             output.textContent = item.message || 'Error loading logs';
@@ -4375,18 +4587,38 @@ function switchKnowledgeTab(tab) {
     }
 }
 
+let _d3LoadPromise = null;
+
+function ensureD3Loaded() {
+    if (window.d3) return Promise.resolve(window.d3);
+    if (_d3LoadPromise) return _d3LoadPromise;
+    _d3LoadPromise = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'assets/vendor/d3/d3.min.js';
+        script.async = true;
+        script.onload = () => resolve(window.d3);
+        script.onerror = () => reject(new Error('Failed to load d3'));
+        document.head.appendChild(script);
+    });
+    return _d3LoadPromise;
+}
+
 function loadKnowledgeGraph() {
     _knowledgeGraphLoaded = true;
     const container = document.getElementById('knowledge-graph-container');
-    container.innerHTML = '';
+    container.innerHTML = '<div class="flex items-center justify-center h-full text-slate-400 text-sm"><i class="fas fa-spinner fa-spin mr-2"></i>Loading graph...</div>';
 
-    fetch('/api/knowledge/graph').then(r => r.json()).then(data => {
+    Promise.all([
+        ensureD3Loaded(),
+        fetch('/api/knowledge/graph').then(r => r.json()),
+    ]).then(([, data]) => {
         const nodes = data.nodes || [];
         const links = data.links || [];
         if (nodes.length === 0) {
             container.innerHTML = `<div class="flex flex-col items-center justify-center h-full text-slate-400"><i class="fas fa-diagram-project text-3xl mb-3 opacity-40"></i><p class="text-sm">${t('knowledge_empty_hint')}</p></div>`;
             return;
         }
+        container.innerHTML = '';
         renderKnowledgeGraph(container, nodes, links);
     }).catch(() => {
         container.innerHTML = '<div class="flex items-center justify-center h-full text-slate-400 text-sm">Failed to load graph</div>';

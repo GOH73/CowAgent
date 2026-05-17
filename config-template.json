@@ -31,11 +31,13 @@
   "dingtalk_client_secret": "",
   "wecom_bot_id": "",
   "wecom_bot_secret": "",
+  "web_host": "",
   "web_password": "",
   "agent": true,
   "agent_max_context_tokens": 50000,
   "agent_max_context_turns": 20,
   "agent_max_steps": 20,
   "enable_thinking": false,
+  "reasoning_effort": "high",
   "knowledge": true
 }

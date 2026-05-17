@@ -26,7 +26,7 @@
 -  ✅  **长期记忆：** 自动将对话记忆持久化至本地文件和数据库中，包括核心记忆、日级记忆和梦境蒸馏，支持关键词及向量检索
 -  ✅  **个人知识库：** 自动整理结构化知识，通过交叉引用构建知识图谱，支持通过对话管理和可视化浏览知识库
 -  ✅  **技能系统：** Skills 安装和运行的引擎，支持从 [Skill Hub](https://skills.cowagent.ai/)、GitHub 等一键安装技能，或通过对话创造 Skills
--  ✅  **工具系统：** 内置文件读写、终端执行、浏览器操作、定时任务等工具，Agent 自主调用以完成复杂任务
+-  ✅  **工具系统：** 内置文件读写、终端执行、浏览器操作、定时任务等工具，支持 MCP 协议，通过 Agent 自主调用完成复杂任务
 -  ✅  **CLI系统：** 提供终端命令和对话命令，支持进程管理、技能安装、配置修改等操作
 -  ✅  **多模态消息：** 支持对文本、图片、语音、文件等多类型消息进行解析、处理、生成、发送等操作
 -  ✅  **多模型支持：** 支持 DeepSeek、MiniMax、Claude、Gemini、OpenAI、GLM、Qwen、Doubao、Kimi 等国内外主流模型厂商
@@ -117,7 +117,7 @@ irm https://cdn.link-ai.tech/code/cow/run.ps1 | iex
 
 项目支持国内外主流厂商的模型接口，可选模型及配置说明参考：[模型说明](#模型说明)。
 
-> 注：Agent 模式下推荐使用以下模型，可根据效果及成本综合选择：deepseek-v4-flash、MiniMax-M2.7、glm-5.1、kimi-k2.6、qwen3.5-plus、claude-sonnet-4-6、gemini-3.1-pro-preview、gpt-5.4、gpt-5.4-mini、ernie-5.0
+> 注：Agent 模式下推荐使用以下模型，可根据效果及成本综合选择：deepseek-v4-flash、MiniMax-M2.7、glm-5.1、kimi-k2.6、qwen3.5-plus、claude-sonnet-4-6、gemini-3.1-pro-preview、gpt-5.4、gpt-5.4-mini、ernie-5.1
 
 同时支持使用 **LinkAI 平台** 接口，支持上述全部模型，并支持知识库、工作流、插件等 Agent 技能，参考 [接口文档](https://docs.link-ai.tech/platform/api)。
 
@@ -204,7 +204,7 @@ cow install-browser
   "group_speech_recognition": false,                          # 是否开启群组语音识别
   "voice_reply_voice": false,                                 # 是否使用语音回复语音
   "use_linkai": false,                                        # 是否使用 LinkAI 接口，默认关闭，设置为 true 后可对接 LinkAI 平台模型
-  "web_password": "",                                         # Web 控制台访问密码，留空则不启用密码保护
+  "web_password": "",                                         # Web 控制台访问密码，留空则不启用密码保护（监听 0.0.0.0 时务必设置）
   "agent": true,                                              # 是否启用 Agent 模式，启用后拥有多轮工具决策、长期记忆、Skills 能力等
   "agent_workspace": "~/cow",                                 # Agent 的工作空间路径，用于存储 memory、skills、系统设定等
   "agent_max_context_tokens": 50000,                          # Agent 模式下最大上下文 tokens，超出将自动智能压缩处理
@@ -605,13 +605,13 @@ API Key 创建：在 [控制台](https://aistudio.google.com/app/apikey?hl=zh-cn
 
 ```json
 {
-  "model": "ernie-5.0",
+  "model": "ernie-5.1",
   "qianfan_api_key": "",
   "qianfan_api_base": "https://qianfan.baidubce.com/v2"
 }
 ```
 
- - `model`: 默认推荐填写 `ernie-5.0`（多模态，可直接识图），也可填写 `ernie-x1.1`、`ernie-4.5-turbo-128k`、`ernie-4.5-turbo-32k`；当主模型为纯文本 ERNIE 时，Vision 工具会自动 fallback 到 `ernie-4.5-turbo-vl`
+ - `model`: 默认推荐填写 `ernie-5.1`（多模态，可直接识图），也可填写 `ernie-5.0`、`ernie-x1.1`、`ernie-4.5-turbo-128k`、`ernie-4.5-turbo-32k`；当主模型为纯文本 ERNIE 时，Vision 工具会自动 fallback 到 `ernie-4.5-turbo-vl`
  - `qianfan_api_key`: 百度千帆 API Key，通常以 `bce-v3/` 开头，可在百度智能云控制台创建
  - `qianfan_api_base`: 可选，默认为 `https://qianfan.baidubce.com/v2`
 
@@ -619,7 +619,7 @@ API Key 创建：在 [控制台](https://aistudio.google.com/app/apikey?hl=zh-cn
 ```json
 {
   "bot_type": "openai",
-  "model": "ernie-5.0",
+  "model": "ernie-5.1",
   "open_ai_api_base": "https://qianfan.baidubce.com/v2",
   "open_ai_api_key": ""
 }
@@ -715,13 +715,16 @@ Coding Plan 是各厂商推出的编程包月套餐，所有厂商均可通过 O
 ```json
 {
     "channel_type": "web",
+    "web_host": "0.0.0.0",
+    "web_password": "YOUR PASSWORD",
     "web_port": 9899
 }
 ```
 
+- `web_host`: 监听地址，默认 `127.0.0.1`（仅本机），如需公网访问请改为 `0.0.0.0` 并设置密码
 - `web_port`: 默认为 9899，可按需更改，需要服务器防火墙和安全组放行该端口
-- `web_password`: 访问密码，留空则不启用密码保护。部署在公网环境时建议设置
-- 如本地运行，启动后请访问 `http://localhost:9899/chat` ；如服务器运行，请访问 `http://ip:9899/chat` 
+- `web_password`: 访问密码，留空则不启用密码保护。部署在公网环境时请务必设置
+- 如本地运行，启动后请访问 `http://localhost:9899` ；如服务器运行，请访问 `http://YOUR_IP:9899`
 > 注：请将上述 url 中的 ip 或者 port 替换为实际的值
 </details>
 
